@@ -45,6 +45,8 @@ library(dplyr)
 #library(RecordLinkage)
 library(PBSmapping)
 library(sp)
+library(knitr)
+library(rmarkdown)
 
 drive1 <- "C:/Users/Banksiola/Documents/R/"
 source(paste(drive1, "functions.R", sep=""))
