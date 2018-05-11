@@ -4,7 +4,7 @@
 # 2017         Original Coding     Eric Ward
 # 2018-May     Improvements        J. Jannot
 #----------------------------------------------------
-
+rm(list = ls())
 library(PBSmapping)
 library(dplyr)
 library(sp)
@@ -77,6 +77,10 @@ for(b in 240:360) {
 	# pts_per_km here really sets the resolution and I think we'd want that to be more like ~ 100-200?
 	dist[b] = calc_distance(polygons = nepacLLutm, pt_df = dfutm, bearing = b, pts_per_km = 30)
 }
+
+birdat <- read.csv(file = "C:/Users/Banksiola/Documents/Seattle Audobon/Data/PSSS 2017-18 data_May 2018.csv",
+                   header = TRUE,
+                   stringsAsFactors = FALSE)
 
 
 
