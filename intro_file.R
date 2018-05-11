@@ -50,6 +50,6 @@ drive1 <- "C:/Users/Banksiola/Documents/R/"
 source(paste(drive1, "functions.R", sep=""))
 source(paste(drive1, "match.f.r", sep=""))
 
-Sys.sleep(5)
+Sys.sleep(2)
 #clear the console
 cat("\014")
