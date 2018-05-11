@@ -1,0 +1,125 @@
+---
+title: "Distance Code Processing Notes"
+author: "Jason Jannot"
+date: "May 11, 2018"
+output: html_document
+---
+#TODO
+1. Finish lat-long data munge
+2. Create a more efficient ```calc_distance``` function perhaps by breaking into several smaller functions.
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      eval = TRUE,
+                      include = TRUE)
+
+source("intro_file.R", echo = T)
+
+##############################
+# function to find nearest distance to land
+##############################
+calc_distance = function(polygons, pt_df, bearing = 270, pts_per_km = 10, max_dist_k = 12) {
+	# pythagorean theorem to draw a line
+	rad = bearing * pi / 180
+	#delta_lat = max_dist * cos(rad)
+	#delta_lon = max_dist * sin(rad)
+
+	# these are equally spaced distances along the hypotenuse --
+	# need to calculate lat-lon coords of each
+	z = seq(0, max_dist_k, length.out = max_dist_k * pts_per_km)
+	delta_lat = z * cos(rad)
+	delta_lon = z * sin(rad)
+
+	x_coords = pt_df$X + delta_lon
+	y_coords = pt_df$Y + delta_lat
+	inpoly = rep(0, length(x_coords)) # vector, 0 or 1 if in polygon
+
+	# this loop is slow - can be sped up in dplyr/plyr
+	for(i in 1:length(x_coords)) { # loop over coordinates
+		# group by polygon id, for each summarize whether this coord is in a polygon
+		g = group_by(polygons, PID) %>%
+		summarize(inpoly = point.in.polygon(point.x=x_coords[i], point.y=y_coords[i], pol.x=X, pol.y=Y))
+		# record total -- should just be 0 or 1
+		inpoly[i] = sum(g$inpoly)
+	}
+
+    # these arguments - 0.02, 0.7 are somewhat arbitrary and meant to catch cases looking at land
+    if(mean(inpoly[1:round(0.02*length(inpoly))]) > 0.7) {
+    	# this is probably a piece of land
+    	dist_to_land = NA
+    } else {
+       # find first location that is on the polygon
+	   dist_to_land = z[which(diff(inpoly)==1) + 1]
+    }
+    return(dist_to_land)
+
+}
+
+```
+# Example polygon info from Eric
+```{r exPoly}
+# Pick a random spot -- this is near Carkeek,
+this_lat = 47.711406
+this_lon = -122.380194
+
+# Convert to UTM
+df = data.frame("PID"=1, "POS"=1, "X"=this_lon, "Y"=this_lat)
+attr(df, "zone")=10
+attr(df, "projection") = "LL"
+dfutm = convUL(df)
+
+# pull in the nepacLL high res map -- this could be swapped with something more high-res
+data(nepacLLhigh)
+
+# use dplyr to identify polygons in our region of interest, and only retain those
+pid = group_by(nepacLLhigh, PID) %>%
+summarize(n = length(which(X < -121 & X > -126 & Y > 47 & Y < 49.5))) %>%
+filter(n > 0)
+nepacLLhigh = nepacLLhigh[which(nepacLLhigh$PID %in% pid$PID),]
+attr(nepacLLhigh, "zone")=10
+# convert this filtered nepacLL to UTM
+nepacLLutm = convUL(nepacLLhigh)
+```
+# Example of using for a single site -- location on E side of puget sound
+This is not run, just here as an example of the code
+
+EW has noted that the number of points per km (```pts_per_km```) sets the resolution. This value represents the number of points along the bearing for which we will calculate a lat-long.  In the current example, this value is set at 10 points per km.  However, EW suggests a resolution of ~ 100-200 points per km.  This will create issues because even with 10 pts per km, the code takes a while to run.  Thus we need to somehow develop the ```calc_distance()``` function into a more efficient function.  Perhaps by breaking it into several smaller functions.
+
+```{r exNotRun, eval = FALSE}
+dist = rep(0, 360)
+for(b in 240:360) {
+	dist[b] = calc_distance(polygons = nepacLLutm, pt_df = dfutm, bearing = b, pts_per_km = 30)
+}
+```
+# PSSS Data
+```{r PSSSdat}
+birdat <- read.csv(file = "C:/Users/Banksiola/Documents/Seattle Audobon/Data/PSSS 2017-18 data_May 2018.csv",
+                   header = TRUE,
+                   stringsAsFactors = FALSE)
+```
+## Munge PSSS Data
+### Clean up bearing field
+There are 3 forms of the bearing entries: 
+1. with leading zeros
+2. with leading "R" or "L"
+3. numeric, but as character.
+
+We need a single, numeric (0-360) as a numeric data type. 
+```{r clnBearing}
+birdat$cln.bearing <- as.numeric(gsub("(0*)([0-9]*)", "\\2", gsub("(R*|L*)([0-9]*)", "\\2", birdat$bearing)))
+```
+### Create Latitude field
+Latitude and longitude are recorded in a single data field
+```position```
+in this format
+```N48 8.644 W122 45.226```
+We need to create two numeric columns, a latitude and a longitude, as decimals (I think?).
+```{r latField}
+birdat$lat_nodec <- gsub("(^[0-9]*)( $)", "\\1",
+                           gsub("(^[0-9]*)( [0-9]*\\.[0-9]*)", "\\1",
+                                (gsub("(N)(*)", "\\2",
+                                      gsub("(N[0-9]* [0-9]*\\.[0-9]*)( W[0-9]* [0-9]*\\.[0-9]*)", "\\1",
+                                           birdat$position, fixed = F))),
+                                fixed = F))
+```
+
