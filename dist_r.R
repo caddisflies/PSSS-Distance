@@ -5,9 +5,8 @@
 # 2018-May     Improvements        J. Jannot
 #----------------------------------------------------
 rm(list = ls())
-library(PBSmapping)
-library(dplyr)
-library(sp)
+
+source("intro_file.R", echo = T)
 
 # Pick a random spot -- this is near Carkeek,
 this_lat = 47.711406
