@@ -81,6 +81,16 @@ birdat <- read.csv(file = "C:/Users/Banksiola/Documents/Seattle Audobon/Data/PSS
                    header = TRUE,
                    stringsAsFactors = FALSE)
 
+#clean up bearing
+birdat$cln.bearing <- as.numeric(gsub("(0*)([0-9]*)", "\\2", gsub("(R*|L*)([0-9]*)", "\\2", birdat$bearing)))
+
+#Create lat-long fields
+bird.dat$lat_nodec <- gsub("(^[0-9]*)( $)", "\\1",
+                           gsub("(^[0-9]*)( [0-9]*\\.[0-9]*)", "\\1",
+                                (gsub("(N)(*)", "\\2",
+                                      gsub("(N[0-9]* [0-9]*\\.[0-9]*)( W[0-9]* [0-9]*\\.[0-9]*)", "\\1",
+                                           birdat$position, fixed = F))),
+                                fixed = F))
 
 
 
