@@ -33,7 +33,7 @@ nepacLLutm = convUL(nepacLLhigh)
 ##############################
 # function to find nearest distance to land
 ##############################
-calc_distance = function(polygons, pt_df, bearing = 270, pts_per_km = 10, max_dist_k = 12) {
+calc_distance = function(polygons, pt_df, bearing = b, pts_per_km = 10, max_dist_k = 12) {
 	# pythagorean theorem to draw a line
 	rad = bearing * pi / 180
 	#delta_lat = max_dist * cos(rad)
@@ -71,8 +71,9 @@ calc_distance = function(polygons, pt_df, bearing = 270, pts_per_km = 10, max_di
 }
 
 # Example of using for a single site -- location on E side of puget sound
-dist = rep(0, 360)
+dist = rep(0, length(240:360))
 for(b in 240:360) {
+  print(b)
 	# pts_per_km here really sets the resolution and I think we'd want that to be more like ~ 100-200?
 	dist[b] = calc_distance(polygons = nepacLLutm, pt_df = dfutm, bearing = b, pts_per_km = 30)
 }
@@ -82,15 +83,22 @@ birdat <- read.csv(file = "C:/Users/Banksiola/Documents/Seattle Audobon/Data/PSS
                    stringsAsFactors = FALSE)
 
 #clean up bearing
-birdat$cln.bearing <- as.numeric(gsub("(0*)([0-9]*)", "\\2", gsub("(R*|L*)([0-9]*)", "\\2", birdat$bearing)))
+# waiting on Eric - JJ 18 May 2018
+# birdat$cln.bearing <- as.numeric(gsub("(0*)([0-9]*)", "\\2", gsub("(R*|L*)([0-9]*)", "\\2", birdat$bearing)))
 
-#Create lat-long fields
-bird.dat$lat_nodec <- gsub("(^[0-9]*)( $)", "\\1",
-                           gsub("(^[0-9]*)( [0-9]*\\.[0-9]*)", "\\1",
-                                (gsub("(N)(*)", "\\2",
-                                      gsub("(N[0-9]* [0-9]*\\.[0-9]*)( W[0-9]* [0-9]*\\.[0-9]*)", "\\1",
-                                           birdat$position, fixed = F))),
-                                fixed = F))
+birdat$Year <- str_extract(birdat$survey_date, "([0-9]{4})")
+
+#taking a recent year to work on
+birdsub <- as_tibble(birdat)%>%filter(Year == 2017)%>%data.frame(., stringsAsFactors = FALSE)
+#Create lat-long fields in decimals
+# lat
+lat_deg <- as.numeric(str_extract(gsub("(N)(*)", "\\2", birdsub$position), "(^[0-9]{2})" ))
+lat_mindec <-  as.numeric(str_extract(birdsub$position, "[0-9]{2}\\.[0-9]+$"))/60
+birdsub$lat_dec <- lat_deg +lat_mindec
+# long
+lon_deg <- as.numeric(gsub("(N[0-9]+ [0-9]{1,3}\\.[0-9]{1,5} W)([0-9]{1,3}\\b)( [0-9]{1,3}\\.[0-9]{1,5})", "\\2", birdsub$position))
+lon_mindec <-  as.numeric(gsub("(N[0-9]+ [0-9]{1,3}\\.[0-9]{1,5} W[0-9]{1,3} )([0-9]{1,3}\\.[0-9]{1,5})", "\\2", birdsub$position))/60
+birdsub$lon_dec <- lon_deg +lon_mindec
 
 
 
