@@ -101,6 +101,7 @@ rm(list = ls())
   pts_per_km = 10
   max_dist_k = 12
 
+  #JJ - Toy example including Eric's original example
   pt_df <- rbind(bird.in[1:100,], dfutm)
 
   tst <- sapply(1:nrow(pt_df), function(i){
