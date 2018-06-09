@@ -65,20 +65,78 @@ rm(list = ls())
 
 # -- Identify polygons in our region of interest, and only retain those
 # --  JJ note: I changed the polygons to match the birdat, hopefully reducing the search space
-  pid = group_by(nepacLLhigh, PID) %>%
-        summarize(n = length(which(X < -(min(uni(lon_deg))) &
-                                 X > -(max(uni(lon_deg)))   &
-                                 Y > min(uni(lat_deg))      &
-                                 Y < max(uni(lat_deg)))))  %>%
-    filter(n > 0)
+  pid = filter(nepacLLhigh, X < max(uni(lon_deg)),
+               X > min(uni(lon_deg)),
+               Y > min(uni(lat_deg)),
+               Y < max(uni(lat_deg)))%>%
+        group_by(PID) %>%
+        summarize(n = length(.))%>%
+        filter(n > 0)%>%
+        ungroup()%>%
+        dplyr::select(PID)%>%
+        distinct(PID)%>%
+        unlist(use.names = FALSE)
+
   nepacLLhigh = as_tibble(nepacLLhigh) %>%
-                filter(PID %in% pid$PID)
+                filter(PID %in% pid)
 # -- NOTE: All of  Puget Sound/Study area is within UTM Zone 10
   attr(nepacLLhigh, "zone") = 10
 # convert this filtered nepacLL to UTM
   nepacLLutm = convUL(nepacLLhigh)
 # --------------------------------------
 
+# &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+  #INCLUDE ERICS EXAMPLE FOR TESTING
+  # JJ- According to Eric this is in PID == 1, which is in the pid object - yeay!
+  # EW- Pick a random spot -- this is near Carkeek,
+  this_lat = 47.711406
+  this_lon = -122.380194
+
+  df = data.frame("X"=this_lon, "Y"=this_lat, minB = 0, maxB = 360)
+  attr(df, "zone")       = 10
+  attr(df, "projection") = "LL"
+  dfutm = convUL(df)
+
+  #JJ - ERICs original parameters
+  pts_per_km = 10
+  max_dist_k = 12
+
+  pt_df <- rbind(bird.in[1:100,], dfutm)
+
+  tst <- sapply(1:nrow(pt_df), function(i){
+    # EW - pythagorean theorem to draw a line
+    cosrad = cos((seq(pt_df$minB[i], pt_df$maxB[i], by = 1))*pi/180)
+    sinrad = sin((seq(pt_df$minB[i], pt_df$maxB[i], by = 1))*pi/180)
+
+    # EW - these are equally spaced distances along the hypotenuse --
+    # EW - need to calculate lat-lon coords of each
+    z = seq(0, max_dist_k, length.out = length(cosrad))
+    delta_lat = z * cosrad
+    delta_lon = z * sinrad
+    x_coords = pt_df$X[i] + delta_lon
+    y_coords = pt_df$Y[i] + delta_lat
+
+    inpoly = rep(0, length(x_coords)) # vector, 0 or 1 if in polygon
+
+    # EW - group by polygon id, for each summarize whether this coord is in a polygon
+    g = group_by(nepacLLutm, PID) %>%
+      dplyr::summarise(inp = point.in.polygon(point.x=x_coords[i], point.y=y_coords[i],
+                                              pol.x=X, pol.y=Y))
+    # EW - record total -- should just be 0 or 1
+    inpoly[i] = sum(g$inp)
+
+    dist_to_land    = rep(0, length(inpoly))
+    # EW - these arguments - 0.02, 0.7 are somewhat arbitrary and meant to catch cases looking at land
+    # JJ - Im not sure I completely understand this part.  I changed the % of values used in the
+    #       threshold mean calculation from 0.02 ==> 0.2 because most values ended up NA with 0.02
+    # JJ - Also note that I added a small value when z[which(inpoly==1)] == 0 because in those cases,
+    #      it's hard to tell that a "value" of z was found (since all other entries are 0)
+    dist_to_land[i] = ifelse(mean(inpoly[[i]][1:round(0.2*length(inpoly[[i]]))], na.rm = T) > 0.7,
+                             ifelse(z[[i]][which(inpoly[[i]]==1)] == 0,
+                                    0.001,
+                                    z[[i]][which(inpoly[[i]]==1)]),
+                             NA)
+    return(dist_to_land)})
 
 
 
