@@ -86,8 +86,8 @@ rm(list = ls())
 # --------------------------------------
 
 # &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
-  #INCLUDE ERICS EXAMPLE FOR TESTING
-  # JJ- According to Eric this is in PID == 1, which is in the pid object - yeay!
+  #Eric's original example to be added to test data
+  # JJ- According to Eric this is in PID == 1
   # EW- Pick a random spot -- this is near Carkeek,
   this_lat = 47.711406
   this_lon = -122.380194
@@ -97,7 +97,7 @@ rm(list = ls())
   attr(df, "projection") = "LL"
   dfutm = convUL(df)
 
-  #JJ - ERICs original parameters
+  #JJ - Erics original parameters
   pts_per_km = 10
   max_dist_k = 12
 
