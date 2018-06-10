@@ -140,5 +140,15 @@ rm(list = ls())
     return(dist_to_land)})
 
 
+  # &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+  # Output
+  # Test to see if each site has only a *single* lat-lon
+  latlonCount <- as_tibble(birdat)%>%
+                  filter(Year>2013)%>%
+                  distinct(Year, site_name, lat_dec,lon_dec)%>%
+                  group_by(Year, site_name)%>%
+                  dplyr::summarise(n = n())%>%
+                  data.frame(., stringsAsFactors = F)
+  any(latlonCount$n >1) #FALSE
 
 
