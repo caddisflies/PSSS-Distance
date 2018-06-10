@@ -44,12 +44,13 @@ rm(list = ls())
                    !is.na(lat_dec),
                    bearing != "")%>%
             mutate(bearing = as.numeric(bearing))%>%
-            group_by(lon_dec, lat_dec)%>%
+            group_by(site_name, lon_dec, lat_dec)%>%
             dplyr::summarise(minB = min(bearing, na.rm = T),
                              maxB = max(bearing, na.rm = T))%>%
             ungroup()%>%
-            dplyr::select(X  = lon_dec, Y = lat_dec, minB, maxB)%>%
-            distinct(X, Y, minB, maxB)%>%
+            mutate(X  = lon_dec,
+                   Y = lat_dec)%>%
+            distinct(site_name, lon_dec, X, lat_dec, Y, minB, maxB)%>%
             data.frame(., stringsAsFactors = FALSE)
  # -- NOTE: All of  Puget Sound/Study area is within UTM Zone 10
  attr(bird.in, "zone") = 10
@@ -150,5 +151,7 @@ rm(list = ls())
                   dplyr::summarise(n = n())%>%
                   data.frame(., stringsAsFactors = F)
   any(latlonCount$n >1) #FALSE
+
+
 
 
