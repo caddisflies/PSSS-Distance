@@ -38,7 +38,7 @@ rm(list = ls())
   birdat$Year = str_extract(birdat$survey_date, "([0-9]{4})")
 
 # -- Create lat-long input data
- bird.in = as_tibble(birdat)%>%
+ bearSites = as_tibble(birdat)%>%
             filter(Year == 2017,
                    !is.na(lon_dec),
                    !is.na(lat_dec),
@@ -53,9 +53,9 @@ rm(list = ls())
             distinct(site_name, lon_dec, X, lat_dec, Y, minB, maxB)%>%
             data.frame(., stringsAsFactors = FALSE)
  # -- NOTE: All of  Puget Sound/Study area is within UTM Zone 10
- attr(bird.in, "zone") = 10
- attr(bird.in, "projection") = "LL"
- bird.in = convUL(bird.in)
+ attr(bearSites, "zone") = 10
+ attr(bearSites, "projection") = "LL"
+ bearSites = convUL(bearSites)
 
 # --------------------------------------
 
@@ -103,7 +103,7 @@ rm(list = ls())
   max_dist_k = 12
 
   #JJ - Toy example including Eric's original example
-  pt_df <- rbind(bird.in[1:100,], dfutm)
+  pt_df <- bird.in
 
   tst <- sapply(1:nrow(pt_df), function(i){
     # EW - pythagorean theorem to draw a line

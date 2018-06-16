@@ -1,18 +1,18 @@
 ---
 title: "Distance Code Processing Notes"
 author: "Jason Jannot"
-date: "May 11, 2018"
+date: "\today"
 output: html_document
 ---
 #TODO
-1. Finish lat-long data munge
-2. Create a more efficient ```calc_distance``` function perhaps by breaking into several smaller functions.
+1. Is all we need the distance, in km, from 0 to 360 at given invervals?  In theory these distances should *not* change as a function of the lat-long origin point.  The lat-long of each distance point *will* change, but the *distance* itself will not.
 
 ```{r setup, include = FALSE}
 knitr::opts_chunk$set(echo = TRUE,
                       eval = TRUE,
                       include = TRUE)
-
+```
+```{r calcs, include = TRUE}
 source("intro_file.R", echo = T)
 
 ##############################
