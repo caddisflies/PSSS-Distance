@@ -27,12 +27,13 @@ rm(list = ls())
 # -- Make lat-long fields decimals
 # lat
   lat_deg = as.numeric(str_extract(gsub("(N)(*)", "\\2", birdat$position), "(^[0-9]{2})" ))
-  lat_mindec =  as.numeric(str_extract(birdat$position, "[0-9]{2}\\.[0-9]+$"))/60
+  lat_mindec =  as.numeric(str_extract(str_extract(birdat$position, "(N)([0-9]){2} ([0-9]){2}\\.([0-9]){1,100}"),"([0-9]){2}\\.([0-9]){1,100}") )/60
   birdat$lat_dec = lat_deg +lat_mindec
 # long
-  lon_deg <- -as.numeric(gsub("(N[0-9]+ [0-9]{1,3}\\.[0-9]{1,5} W)([0-9]{1,3}\\b)( [0-9]{1,3}\\.[0-9]{1,5})", "\\2", birdat$position))
+  lon_deg = as.numeric(gsub("(N[0-9]+ [0-9]{1,3}\\.[0-9]{1,5} W)([0-9]{1,3}\\b)( [0-9]{1,3}\\.[0-9]{1,5})", "\\2", birdat$position))
   lon_mindec =  as.numeric(gsub("(N[0-9]+ [0-9]{1,3}\\.[0-9]{1,5} W[0-9]{1,3} )([0-9]{1,3}\\.[0-9]{1,5})", "\\2", birdat$position))/60
-  birdat$lon_dec = lon_deg +lon_mindec
+  birdat$lon_dec = -(lon_deg +lon_mindec)
+  lon_deg = birdat$lon_dec
 
 # -- Create Year field for subsetting
   birdat$Year = str_extract(birdat$survey_date, "([0-9]{4})")
@@ -53,9 +54,9 @@ rm(list = ls())
             distinct(site_name, lon_dec, X, lat_dec, Y, minB, maxB)%>%
             data.frame(., stringsAsFactors = FALSE)
  # -- NOTE: All of  Puget Sound/Study area is within UTM Zone 10
- attr(bearSites, "zone") = 10
- attr(bearSites, "projection") = "LL"
- bearSites = convUL(bearSites)
+ # attr(bearSites, "zone") = 10
+ # attr(bearSites, "projection") = "LL"
+ # bearSites = convUL(bearSites)
 
 # --------------------------------------
 
@@ -66,92 +67,124 @@ rm(list = ls())
 
 # -- Identify polygons in our region of interest, and only retain those
 # --  JJ note: I changed the polygons to match the birdat, hopefully reducing the search space
-  pid = filter(nepacLLhigh, X < max(uni(lon_deg)),
-               X > min(uni(lon_deg)),
-               Y > min(uni(lat_deg)),
-               Y < max(uni(lat_deg)))%>%
-        group_by(PID) %>%
-        summarize(n = length(.))%>%
-        filter(n > 0)%>%
-        ungroup()%>%
-        dplyr::select(PID)%>%
-        distinct(PID)%>%
-        unlist(use.names = FALSE)
+  pid =  nepacLLhigh %>%
+    mutate(ind = ifelse( (X <= max(uni(lon_deg)) &
+                           X >= min(uni(lon_deg)) &
+                           Y >= min(uni(lat_deg)) &
+                           Y <= max(uni(lat_deg))), 1, 0))%>%
+             group_by(PID) %>%
+             summarize(tot = ifelse(sum(ind) > 0, 1, 0)) %>%
+             filter(tot == 1)%>%
+             data.frame(., stringsAsFactors = F)
 
-  nepacLLhigh = as_tibble(nepacLLhigh) %>%
-                filter(PID %in% pid)
+  nepacLLhigh2 = as_tibble(nepacLLhigh)%>%
+                 filter(PID %in% pid$PID,
+                        (X <= max(uni(lon_deg)) &
+                            X >= min(uni(lon_deg)) &
+                            Y >= min(uni(lat_deg)) &
+                            Y <= max(uni(lat_deg))))%>%
+                  data.frame(., stringsAsFactors = FALSE)
+
 # -- NOTE: All of  Puget Sound/Study area is within UTM Zone 10
-  attr(nepacLLhigh, "zone") = 10
-# convert this filtered nepacLL to UTM
-  nepacLLutm = convUL(nepacLLhigh)
+  attr(nepacLLhigh2, "zone") = 10
+  attr(nepacLLhigh2, "projection") = "LL"
+# # convert this filtered nepacLL to UTM
+#   nepacLLutm = convUL(nepacLLhigh2)
 # --------------------------------------
 
 # &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
-  #Eric's original example to be added to test data
-  # JJ- According to Eric this is in PID == 1
-  # EW- Pick a random spot -- this is near Carkeek,
-  this_lat = 47.711406
-  this_lon = -122.380194
+# Create X,Y coordinates for points along a "line" for each site & bearing
 
-  df = data.frame("X"=this_lon, "Y"=this_lat, minB = 0, maxB = 360)
-  attr(df, "zone")       = 10
-  attr(df, "projection") = "LL"
-  dfutm = convUL(df)
-
-  #JJ - Erics original parameters
-  pts_per_km = 10
+  # -- Set the resolution
+  # pts_per_km here really sets the resolution and I think we'd want that to be more like ~ 100-200?
   max_dist_k = 12
+  pts_per_km = 30 # this enables z to be same length as bearAll, which just makes everything easier...
+  # these are equally spaced distances along the hypotenuse --
+  # need to calculate lat-lon coords of each
+  z = seq(0, max_dist_k, length.out = max_dist_k * pts_per_km)
 
-  #JJ - Toy example including Eric's original example
-  pt_df <- bird.in
+  bearAll   = seq(1, 360, by = 1)
+  # pythagorean theorem to draw a line
+  sinrad    = sin(bearAll)*pi/180
+  cosrad    = cos(bearAll)*pi/180
 
-  tst <- sapply(1:nrow(pt_df), function(i){
-    # EW - pythagorean theorem to draw a line
-    cosrad = cos((seq(pt_df$minB[i], pt_df$maxB[i], by = 1))*pi/180)
-    sinrad = sin((seq(pt_df$minB[i], pt_df$maxB[i], by = 1))*pi/180)
+  # -- Multiply every bearing (1:360) by every delta
+  deltaLL = do.call(rbind,
+                    Map(function(i){data.frame(cbind(    bear  = bearAll[i],
+                                                         z = z[i],
+                                                         delta_lon = z[i] * sinrad,
+                                                         delta_lat = z[i] * cosrad))}, 1:length(sinrad)))
+  dim(deltaLL)
+  deltaLL = deltaLL[complete.cases(deltaLL) , ]
+  dim(deltaLL)
 
-    # EW - these are equally spaced distances along the hypotenuse --
-    # EW - need to calculate lat-lon coords of each
-    z = seq(0, max_dist_k, length.out = length(cosrad))
-    delta_lat = z * cosrad
-    delta_lon = z * sinrad
-    x_coords = pt_df$X[i] + delta_lon
-    y_coords = pt_df$Y[i] + delta_lat
+  # -- Create a data frame of X, Y, and site_name
 
-    inpoly = rep(0, length(x_coords)) # vector, 0 or 1 if in polygon
+  # - Use a subset of the data for example
+  pt_df <- bearSites[1:5, ]
 
-    # EW - group by polygon id, for each summarize whether this coord is in a polygon
-    g = group_by(nepacLLutm, PID) %>%
-      dplyr::summarise(inp = point.in.polygon(point.x=x_coords[i], point.y=y_coords[i],
-                                              pol.x=X, pol.y=Y))
-    # EW - record total -- should just be 0 or 1
-    inpoly[i] = sum(g$inp)
+  xycoords = do.call(rbind,
+                     Map(function(i){
+                               cbind(site_name = pt_df$site_name[i], bearing = bearAll,
+                               data.frame(X = pt_df$X[i] + deltaLL$delta_lon),
+                               data.frame(Y = pt_df$Y[i] + deltaLL$delta_lat), stringsAsFactors = FALSE)
+                       },
+                       1:nrow(pt_df)))
 
-    dist_to_land    = rep(0, length(inpoly))
-    # EW - these arguments - 0.02, 0.7 are somewhat arbitrary and meant to catch cases looking at land
-    # JJ - Im not sure I completely understand this part.  I changed the % of values used in the
-    #       threshold mean calculation from 0.02 ==> 0.2 because most values ended up NA with 0.02
-    # JJ - Also note that I added a small value when z[which(inpoly==1)] == 0 because in those cases,
-    #      it's hard to tell that a "value" of z was found (since all other entries are 0)
-    dist_to_land[i] = ifelse(mean(inpoly[[i]][1:round(0.2*length(inpoly[[i]]))], na.rm = T) > 0.7,
-                             ifelse(z[[i]][which(inpoly[[i]]==1)] == 0,
-                                    0.001,
-                                    z[[i]][which(inpoly[[i]]==1)]),
-                             NA)
-    return(dist_to_land)})
+  inpoly = rep(0, nrow(xycoords)) # vector, 0 or 1 if in polygo
+  # this loop is slow - can be sped up in dplyr/plyr
+  for(i in 1:length(xycoords)) { # loop over coordinates
+    # group by polygon id, for each summarize whether this coord is in a polygon nepacLLhigh2
+    g = group_by(nepacLLhigh2, PID) %>%
+      dplyr::summarise(inpoly = point.in.polygon(point.x = xycoords$X[i],
+                                          point.y = xycoords$Y[i],
+                                          pol.x = X, pol.y = Y))
+    # record total -- should just be 0 or 1
+    inpoly[i] = sum(g$inpoly)
+  }
 
+  # -- Subset for mapping example
+  d = as_tibble(xycoords)%>%
+            filter(site_name %in% unique(site_name)[1:5],
+                   bearing == 270)%>%
+            data.frame(., stringsAsFactors = FALSE)
+
+  attr(d, "zone") = 10
+  attr(d, "projection") = "LL"
+  #d2 = convUL(d)
 
   # &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
-  # Output
-  # Test to see if each site has only a *single* lat-lon
-  latlonCount <- as_tibble(birdat)%>%
-                  filter(Year>2013)%>%
-                  distinct(Year, site_name, lat_dec,lon_dec)%>%
-                  group_by(Year, site_name)%>%
-                  dplyr::summarise(n = n())%>%
-                  data.frame(., stringsAsFactors = F)
-  any(latlonCount$n >1) #FALSE
+  # Mapping Example
 
+  pdf("test_map.pdf", onefile = TRUE)
+  for(i in 1:length(unique(d$site_name))){
+
+    din = as_tibble(d)%>%
+      filter(site_name == unique(.$site_name)[i])%>%
+      data.frame(., stringsAsFactors = FALSE)
+
+    minLon = min(din$X) + 0.1
+    maxLon = max(din$X) - 0.1
+    minLat = min(din$Y) - 0.1
+    maxLat = max(din$Y) + 0.1
+    pltitle = paste0(uni(din$site_name), " bearing: ", uni(din$bearing))
+
+    g = ggplot(din, aes(x = X, y = Y)) +
+      geom_polygon(data = nepacLLhigh2, aes(x = X, y = Y, group = PID), fill = 8, color = "black") +
+      geom_point()+
+      labs(x = "Longitude", y = "Latitude", title = pltitle) +
+      theme_bw() +
+      #coord_map() +
+      coord_map(xlim = c(minLon, maxLon), ylim = c(minLat, maxLat)) +
+      theme(panel.border     = element_blank(),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+            axis.line        = element_line(colour = "black"))
+
+
+    print(g)}
+
+  dev.off()
 
 
 

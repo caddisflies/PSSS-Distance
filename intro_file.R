@@ -47,6 +47,9 @@ library(PBSmapping)
 library(sp)
 library(knitr)
 library(rmarkdown)
+library(rgdal)
+library(tidyr)
+library(measurements)
 
 drive1 <- "C:/Users/Banksiola/Documents/R/"
 source(paste(drive1, "functions.R", sep=""))
