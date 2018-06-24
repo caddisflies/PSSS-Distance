@@ -36,3 +36,5 @@ vignettes/*.pdf
 *.Rproj
 
 JJscratchpad\.R
+
+*.pdf
