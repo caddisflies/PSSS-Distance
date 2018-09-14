@@ -98,9 +98,9 @@ rm(list = ls())
   # -- Set the resolution
   # pts_per_km here really sets the resolution and I think we'd want that to be more like ~ 100-200?
   max_dist_k = 12
-  pts_per_km = 30 # this enables z to be same length as bearAll, which just makes everything easier...
-  # these are equally spaced distances along the hypotenuse --
-  # need to calculate lat-lon coords of each
+  pts_per_km = 100
+  # these are equally spaced distances along the hypotenuse
+  # Below we will calculate lat-lon coords of each
   z = seq(0, max_dist_k, length.out = max_dist_k * pts_per_km)
 
   bearAll   = seq(1, 360, by = 1)
@@ -108,12 +108,11 @@ rm(list = ls())
   sinrad    = sin(bearAll)*pi/180
   cosrad    = cos(bearAll)*pi/180
 
-  # -- Multiply every bearing (1:360) by every delta
+  # -- Calculate the change from one point to the next
   deltaLL = do.call(rbind,
-                    Map(function(i){data.frame(cbind(    bear  = bearAll[i],
-                                                         z = z[i],
+                    Map(function(i){data.frame(cbind(    z = z[i],
                                                          delta_lon = z[i] * sinrad,
-                                                         delta_lat = z[i] * cosrad))}, 1:length(sinrad)))
+                                                         delta_lat = z[i] * cosrad))}, 1:length(z)))
   dim(deltaLL)
   deltaLL = deltaLL[complete.cases(deltaLL) , ]
   dim(deltaLL)
