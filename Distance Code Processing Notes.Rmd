@@ -5,97 +5,33 @@ date: "\today"
 output: html_document
 ---
 #TODO
-1. Is all we need the distance, in km, from 0 to 360 at given invervals?  In theory these distances should *not* change as a function of the lat-long origin point.  The lat-long of each distance point *will* change, but the *distance* itself will not.
+1. Agree that this is a reasonable approach and get code review.
+2. Build the full set of points for each site.
+3. Create an "implausible" set (i.e., points on land) and exclude (although this might not be needed - JJ)
+4. Determine how to convert the bird distances, which are in mm to actual distances.
 
-```{r setup, include = FALSE}
+# Notes
+1. We need equally spaced points along a line for each bearing from 0 to 360.  In theory these distances should *not* change as a function of the lat-long origin point.  The lat-long of each distance point *will* change, but the *distance* itself will not.
+2. EW has noted that the number of points per km (```pts_per_km```) sets the resolution. This value represents the number of points along the bearing for which we will calculate a lat-long.  In the current example, this value is set at 100 points per km.  Jason has made this more efficient.
+3. JJ is unsure of how to implement EW's method for determining when points are on "land".  JJ's implementation (below) does not really accomplish this task. JJ is also not 100% convinced we need to make this determination.  If the point is simply to determine the distance to a bird, perhaps the issue of land is irrelevant.
+
+```{r setup, include = FALSE, echo=FALSE}
 knitr::opts_chunk$set(echo = TRUE,
                       eval = TRUE,
                       include = TRUE)
 ```
-```{r calcs, include = TRUE}
+```{r calcs, include = TRUE, echo=FALSE}
 source("intro_file.R", echo = T)
-
-##############################
-# function to find nearest distance to land
-##############################
-calc_distance = function(polygons, pt_df, bearing = 270, pts_per_km = 10, max_dist_k = 12) {
-	# pythagorean theorem to draw a line
-	rad = bearing * pi / 180
-	#delta_lat = max_dist * cos(rad)
-	#delta_lon = max_dist * sin(rad)
-
-	# these are equally spaced distances along the hypotenuse --
-	# need to calculate lat-lon coords of each
-	z = seq(0, max_dist_k, length.out = max_dist_k * pts_per_km)
-	delta_lat = z * cos(rad)
-	delta_lon = z * sin(rad)
-
-	x_coords = pt_df$X + delta_lon
-	y_coords = pt_df$Y + delta_lat
-	inpoly = rep(0, length(x_coords)) # vector, 0 or 1 if in polygon
-
-	# this loop is slow - can be sped up in dplyr/plyr
-	for(i in 1:length(x_coords)) { # loop over coordinates
-		# group by polygon id, for each summarize whether this coord is in a polygon
-		g = group_by(polygons, PID) %>%
-		summarize(inpoly = point.in.polygon(point.x=x_coords[i], point.y=y_coords[i], pol.x=X, pol.y=Y))
-		# record total -- should just be 0 or 1
-		inpoly[i] = sum(g$inpoly)
-	}
-
-    # these arguments - 0.02, 0.7 are somewhat arbitrary and meant to catch cases looking at land
-    if(mean(inpoly[1:round(0.02*length(inpoly))]) > 0.7) {
-    	# this is probably a piece of land
-    	dist_to_land = NA
-    } else {
-       # find first location that is on the polygon
-	   dist_to_land = z[which(diff(inpoly)==1) + 1]
-    }
-    return(dist_to_land)
-
-}
-
-```
-# Example polygon info from Eric
-```{r exPoly}
-# Pick a random spot -- this is near Carkeek,
-this_lat = 47.711406
-this_lon = -122.380194
-
-# Convert to UTM
-df = data.frame("PID"=1, "POS"=1, "X"=this_lon, "Y"=this_lat)
-attr(df, "zone")=10
-attr(df, "projection") = "LL"
-dfutm = convUL(df)
-
-# pull in the nepacLL high res map -- this could be swapped with something more high-res
-data(nepacLLhigh)
-
-# use dplyr to identify polygons in our region of interest, and only retain those
-pid = group_by(nepacLLhigh, PID) %>%
-summarize(n = length(which(X < -121 & X > -126 & Y > 47 & Y < 49.5))) %>%
-filter(n > 0)
-nepacLLhigh = nepacLLhigh[which(nepacLLhigh$PID %in% pid$PID),]
-attr(nepacLLhigh, "zone")=10
-# convert this filtered nepacLL to UTM
-nepacLLutm = convUL(nepacLLhigh)
-```
-# Example of using for a single site -- location on E side of puget sound
-This is not run, just here as an example of the code
-
-EW has noted that the number of points per km (```pts_per_km```) sets the resolution. This value represents the number of points along the bearing for which we will calculate a lat-long.  In the current example, this value is set at 10 points per km.  However, EW suggests a resolution of ~ 100-200 points per km.  This will create issues because even with 10 pts per km, the code takes a while to run.  Thus we need to somehow develop the ```calc_distance()``` function into a more efficient function.  Perhaps by breaking it into several smaller functions.
-
-```{r exNotRun, eval = FALSE}
-dist = rep(0, 360)
-for(b in 240:360) {
-	dist[b] = calc_distance(polygons = nepacLLutm, pt_df = dfutm, bearing = b, pts_per_km = 30)
-}
 ```
 # PSSS Data
-```{r PSSSdat}
-birdat <- read.csv(file = "C:/Users/Banksiola/Documents/Seattle Audobon/Data/PSSS 2017-18 data_May 2018.csv",
+```{r PSSSdat, echo=FALSE}
+# -- The PSSS data
+  birdat <- read.csv(file = "C:/Users/Banksiola/Documents/Seattle Audobon/Data/PSSS 2017-18 data_May 2018.csv",
                    header = TRUE,
                    stringsAsFactors = FALSE)
+
+# -- Create a uniqe ID for every line, just in case...
+  birdat$UniqueID = c(1:nrow(birdat))
 ```
 ## Munge PSSS Data
 ### Clean up bearing field
@@ -106,20 +42,179 @@ There are 3 forms of the bearing entries:
 
 We need a single, numeric (0-360) as a numeric data type. 
 ```{r clnBearing}
-birdat$cln.bearing <- as.numeric(gsub("(0*)([0-9]*)", "\\2", gsub("(R*|L*)([0-9]*)", "\\2", birdat$bearing)))
+# -- Clean up bearing
+# waiting on Eric - JJ 18 May 2018
+# birdat$cln.bearing <- as.numeric(gsub("(0*)([0-9]*)", "\\2", gsub("(R*|L*)([0-9]*)", "\\2", birdat$bearing)))
+
+# -- Create Year field for subsetting
+  birdat$Year = str_extract(birdat$survey_date, "([0-9]{4})")
+
 ```
-### Create Latitude field
+### Create latitude & longitude fields in the bird data
 Latitude and longitude are recorded in a single data field
 ```position```
 in this format
 ```N48 8.644 W122 45.226```
-We need to create two numeric columns, a latitude and a longitude, as decimals (I think?).
+We need to create two numeric columns, a latitude and a longitude, as decimals.
 ```{r latField}
-birdat$lat_nodec <- gsub("(^[0-9]*)( $)", "\\1",
-                           gsub("(^[0-9]*)( [0-9]*\\.[0-9]*)", "\\1",
-                                (gsub("(N)(*)", "\\2",
-                                      gsub("(N[0-9]* [0-9]*\\.[0-9]*)( W[0-9]* [0-9]*\\.[0-9]*)", "\\1",
-                                           birdat$position, fixed = F))),
-                                fixed = F))
+# -- Make lat-long fields decimals
+# lat
+  lat_deg = as.numeric(str_extract(gsub("(N)(*)", "\\2", birdat$position), "(^[0-9]{2})" ))
+  lat_mindec =  as.numeric(str_extract(str_extract(birdat$position, "(N)([0-9]){2} ([0-9]){2}\\.([0-9]){1,100}"),"([0-9]){2}\\.([0-9]){1,100}") )/60
+  birdat$lat_dec = lat_deg +lat_mindec
+# long
+  lon_deg = as.numeric(gsub("(N[0-9]+ [0-9]{1,3}\\.[0-9]{1,5} W)([0-9]{1,3}\\b)( [0-9]{1,3}\\.[0-9]{1,5})", "\\2", birdat$position))
+  lon_mindec =  as.numeric(gsub("(N[0-9]+ [0-9]{1,3}\\.[0-9]{1,5} W[0-9]{1,3} )([0-9]{1,3}\\.[0-9]{1,5})", "\\2", birdat$position))/60
+  birdat$lon_dec = -(lon_deg +lon_mindec)
+  lon_deg = birdat$lon_dec
+  
+  # -- Create lat-long input data
+ bearSites = as_tibble(birdat)%>%
+            filter(!is.na(lon_dec),
+                   !is.na(lat_dec),
+                   bearing != "")%>%
+            mutate(bearing = as.numeric(bearing))%>%
+            group_by(site_name, lon_dec, lat_dec)%>%
+            dplyr::summarise(minB = min(bearing, na.rm = T),
+                             maxB = max(bearing, na.rm = T))%>%
+            ungroup()%>%
+            mutate(X  = lon_dec,
+                   Y = lat_dec)%>%
+            distinct(site_name, lon_dec, X, lat_dec, Y, minB, maxB)%>%
+            data.frame(., stringsAsFactors = FALSE)
+ # -- NOTE: All of  Puget Sound/Study area is within UTM Zone 10
+
+```
+# Example: sites on the east side of puget sound
+## Example polygon data
+The nepacLL high res map is used in this example. This could be swapped with a more high-resolution mapping data set, according to E. Ward.
+The following code identifies polygons in our region of interest, and retains only those polygons. All of Puget Sound study area is within UTM Zone 10.
+```{r exPoly}
+
+# -- The nepacLL map -- this could be swapped with something more high-res (EW)
+  data(nepacLLhigh)
+
+# -- Identify polygons in our region of interest, and only retain those
+# --  JJ note: I changed the polygons to match the birdat, hopefully reducing the search space
+  pid =  nepacLLhigh %>%
+    mutate(ind = ifelse( (X <= max(uni(lon_deg)) &
+                           X >= min(uni(lon_deg)) &
+                           Y >= min(uni(lat_deg)) &
+                           Y <= max(uni(lat_deg))), 1, 0))%>%
+             group_by(PID) %>%
+             summarize(tot = ifelse(sum(ind) > 0, 1, 0)) %>%
+             filter(tot == 1)%>%
+             data.frame(., stringsAsFactors = F)
+
+  nepacLLhigh2 = as_tibble(nepacLLhigh)%>%
+                 filter(PID %in% pid$PID,
+                        (X <= max(uni(lon_deg)) &
+                            X >= min(uni(lon_deg)) &
+                            Y >= min(uni(lat_deg)) &
+                            Y <= max(uni(lat_deg))))%>%
+                  data.frame(., stringsAsFactors = FALSE)
+
+# -- NOTE: All of  Puget Sound/Study area is within UTM Zone 10
+  attr(nepacLLhigh2, "zone") = 10
+  attr(nepacLLhigh2, "projection") = "LL"
+```
+# Create the change in coordinates (delta) along a "line" for each site & bearing
+The following code creates the change in each lat-long coordinate for each point along a line starting at a bearing from a site.  The `max_dist_k` sets the maximum length of the line, in km. The `pts_per_km` variable sets how many points will be "plotted" along the line.  Currently, `max_dist_k` is set to 12 km and `pts_per_km` is set to 100, as originally suggested by Eric.  The result is, in this example, 1200 equally spaced points along a line.  Now that we have a line with equally spaced points, we can calculate the *change* (run = x = latitude, rise = y = longitude) from one point to the next. Once we have changes along a line, we can give this line a starting point (site) and an angle (bearing) and then we can map the line to a location in space (in this example somewhere in east Puget Sound). 
+```{r deltas}
+  # -- Set the resolution
+  # pts_per_km here really sets the resolution and I think we'd want that to be more like ~ 100-200?
+  max_dist_k = 12
+  pts_per_km = 100 
+  # these are equally spaced distances along the hypotenuse
+  # Below we will calculate lat-lon coords of each of these points
+  z = seq(0, max_dist_k, length.out = max_dist_k * pts_per_km)
+
+  bearAll   = seq(1, 360, by = 1)
+  # pythagorean theorem to draw a line
+  sinrad    = sin(bearAll)*pi/180
+  cosrad    = cos(bearAll)*pi/180
+
+  # -- Calculate the change from one point to the next
+  deltaLL = do.call(rbind,
+                  Map(function(i){data.frame(cbind(    z = z[i],
+                                                       delta_lon = z[i] * sinrad,
+                                                       delta_lat = z[i] * cosrad))}, 1:length(z)))
+  dim(deltaLL)
+  deltaLL = deltaLL[complete.cases(deltaLL) , ]
+  dim(deltaLL)
+
+```
+The `deltall` object has 100 points per kilometer, each point multiplied by each change in the `sin`/`cos-rad` object, resulting in a rather large object.  However the `do.call` - `Map` functions appear to handle this just fine.
+The next step is to convert those changes into actual lat-long coordinates associated with a bearing and a PSSS site.  For this example, we subset the PSSS data to the first five sites in the dataset.
+```{r convrt2LL}
+  # - Use a subset of the data for example
+  pt_df <- bearSites[1:5, ]
+
+  xycoords = do.call(rbind,
+                     Map(function(i){
+                               cbind(site_name = pt_df$site_name[i], bearing = bearAll,
+                               data.frame(X = pt_df$X[i] + deltaLL$delta_lon),
+                               data.frame(Y = pt_df$Y[i] + deltaLL$delta_lat), stringsAsFactors = FALSE)
+                       },
+                       1:nrow(pt_df)))
+```
+Now we need to determine the polygon where the site resides.  I continue to use a `for` loop and have not found a viable alternative that does what I need.  To be honest, from the original code, I had a hard time determining the purpose of this code. It seems like it was meant to identify points on land.  I'm not completely sure if that is really necessary.  I've had trouble getting it to work, perhaps Eric can get it working if we really need it.  I have left my version of it in here, but improvements are needed and welcome.
+```{r, InPoly}
+  inpoly = rep(0, nrow(xycoords)) # vector, 0 or 1 if in polygo
+  # this loop is slow - can be sped up in dplyr/plyr
+  for(i in 1:length(xycoords)) { # loop over coordinates
+    # group by polygon id, for each summarize whether this coord is in a polygon nepacLLhigh2
+    g = group_by(nepacLLhigh2, PID) %>%
+      dplyr::summarise(inpoly = point.in.polygon(point.x = xycoords$X[i],
+                                          point.y = xycoords$Y[i],
+                                          pol.x = X, pol.y = Y))
+    # record total -- should just be 0 or 1
+    inpoly[i] = sum(g$inpoly)
+  }
+```
+Now, let's map some example lines, using multiple sites and multiple bearings at each site as examples.
+```{r, mapExmpl}
+  # -- Subset for mapping example
+  d = as_tibble(xycoords)%>%
+            filter(site_name %in% unique(site_name)[1:5],
+                   bearing %in% c(45, 120, 270))%>%
+            data.frame(., stringsAsFactors = FALSE)
+
+  attr(d, "zone") = 10
+  attr(d, "projection") = "LL"
+  
+  # Map examples from different sites and different bearings
+  pdf("test_map.pdf", onefile = TRUE)
+  for(i in 1:length(unique(d$site_name))){
+
+    din = as_tibble(d)%>%
+      filter(site_name == unique(.$site_name)[i])%>%
+      data.frame(., stringsAsFactors = FALSE)
+
+    minLon = min(din$X) + 0.4
+    maxLon = max(din$X) - 0.4
+    minLat = min(din$Y) - 0.1
+    maxLat = max(din$Y) + 0.1
+    pltitle = paste0(uni(din$site_name), " bearing: ", uni(din$bearing))
+
+    g = ggplot(din, aes(x = X, y = Y)) +
+      geom_polygon(data = nepacLLhigh2, aes(x = X, y = Y, group = PID), fill = 8, color = "black") +
+      geom_point()+
+      labs(x = "Longitude", y = "Latitude", title = pltitle) +
+      theme_bw() +
+      #coord_map() +
+      coord_map(xlim = c(minLon, maxLon), ylim = c(minLat, maxLat)) +
+      theme(panel.border     = element_blank(),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+            axis.line        = element_line(colour = "black"))
+
+
+    print(g)}
+
+  dev.off()
+
+
+
 ```
 
