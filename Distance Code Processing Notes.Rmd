@@ -5,10 +5,7 @@ date: "\today"
 output: html_document
 ---
 #TODO
-1. Agree that this is a reasonable approach and get code review.
-2. Build the full set of points for each site.
-3. Create an "implausible" set (i.e., points on land) and exclude (although this might not be needed - JJ)
-4. Determine how to convert the bird distances, which are in mm to actual distances.
+1. Get the `inpoly` section working properly.
 
 # Notes
 1. We need equally spaced points along a line for each bearing from 0 to 360.  In theory these distances should *not* change as a function of the lat-long origin point.  The lat-long of each distance point *will* change, but the *distance* itself will not.
@@ -158,7 +155,8 @@ The next step is to convert those changes into actual lat-long coordinates assoc
                        },
                        1:nrow(pt_df)))
 ```
-Now we need to determine the polygon where the site resides.  I continue to use a `for` loop and have not found a viable alternative that does what I need.  To be honest, from the original code, I had a hard time determining the purpose of this code. It seems like it was meant to identify points on land.  I'm not completely sure if that is really necessary.  I've had trouble getting it to work, perhaps Eric can get it working if we really need it.  I have left my version of it in here, but improvements are needed and welcome.
+Now we need to determine the polygon where the site resides.  
+### JJ Needs to work on this section
 ```{r, InPoly}
   inpoly = rep(0, nrow(xycoords)) # vector, 0 or 1 if in polygo
   # this loop is slow - can be sped up in dplyr/plyr
