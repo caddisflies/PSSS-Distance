@@ -10,7 +10,7 @@
 cat("\014")
 
 #- Load libraries
-#library(plyr)
+library(plyr)
 #library(data.table)
 library(ggplot2)
 #library(logging)
