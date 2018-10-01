@@ -50,6 +50,7 @@ library(rmarkdown)
 library(rgdal)
 library(tidyr)
 library(measurements)
+library(ggmap)
 
 drive1 <- "C:/Users/Banksiola/Documents/R/"
 source(paste(drive1, "functions.R", sep=""))

@@ -11,7 +11,6 @@
 
 <meta name="author" content="Jason Jannot" />
 
-<meta name="date" content="2018-05-11" />
 
 <title>Distance Code Processing Notes</title>
 
@@ -121,7 +120,7 @@ $(document).ready(function () {
 
 <h1 class="title toc-ignore">Distance Code Processing Notes</h1>
 <h4 class="author"><em>Jason Jannot</em></h4>
-<h4 class="date"><em>May 11, 2018</em></h4>
+<h4 class="date"><em><pre><code>oday</code></pre></em></h4>
 
 </div>
 
@@ -129,68 +128,262 @@ $(document).ready(function () {
 <div id="todo" class="section level1">
 <h1>TODO</h1>
 <ol style="list-style-type: decimal">
-<li>Finish lat-long data munge</li>
-<li>Create a more efficient <code>calc_distance</code> function perhaps by breaking into several smaller functions.</li>
+<li>Agree that this is a reasonable approach and get code review.</li>
+<li>Build the full set of points for each site.</li>
+<li>Create an “implausible” set (i.e., points on land) and exclude (although this might not be needed - JJ)</li>
+<li>Determine how to convert the bird distances, which are in mm, to actual distances.</li>
 </ol>
 </div>
-<div id="example-polygon-info-from-eric" class="section level1">
-<h1>Example polygon info from Eric</h1>
-<pre class="r"><code># Pick a random spot -- this is near Carkeek,
-this_lat = 47.711406
-this_lon = -122.380194
-
-# Convert to UTM
-df = data.frame(&quot;PID&quot;=1, &quot;POS&quot;=1, &quot;X&quot;=this_lon, &quot;Y&quot;=this_lat)
-attr(df, &quot;zone&quot;)=10
-attr(df, &quot;projection&quot;) = &quot;LL&quot;
-dfutm = convUL(df)</code></pre>
-<pre><code>## convUL: Converting coordinates within the northern hemisphere.</code></pre>
-<pre class="r"><code># pull in the nepacLL high res map -- this could be swapped with something more high-res
-data(nepacLLhigh)
-
-# use dplyr to identify polygons in our region of interest, and only retain those
-pid = group_by(nepacLLhigh, PID) %&gt;%
-summarize(n = length(which(X &lt; -121 &amp; X &gt; -126 &amp; Y &gt; 47 &amp; Y &lt; 49.5))) %&gt;%
-filter(n &gt; 0)
-nepacLLhigh = nepacLLhigh[which(nepacLLhigh$PID %in% pid$PID),]
-attr(nepacLLhigh, &quot;zone&quot;)=10
-# convert this filtered nepacLL to UTM
-nepacLLutm = convUL(nepacLLhigh)</code></pre>
-<pre><code>## convUL: Converting coordinates within the northern hemisphere.</code></pre>
-</div>
-<div id="example-of-using-for-a-single-site-location-on-e-side-of-puget-sound" class="section level1">
-<h1>Example of using for a single site – location on E side of puget sound</h1>
-<p>This is not run, just here as an example of the code</p>
-<p>EW has noted that the number of points per km (<code>pts_per_km</code>) sets the resolution. This value represents the number of points along the bearing for which we will calculate a lat-long. In the current example, this value is set at 10 points per km. However, EW suggests a resolution of ~ 100-200 points per km. This will create issues because even with 10 pts per km, the code takes a while to run. Thus we need to somehow develop the <code>calc_distance()</code> function into a more efficient function. Perhaps by breaking it into several smaller functions.</p>
-<pre class="r"><code>dist = rep(0, 360)
-for(b in 240:360) {
-    dist[b] = calc_distance(polygons = nepacLLutm, pt_df = dfutm, bearing = b, pts_per_km = 30)
-}</code></pre>
+<div id="notes" class="section level1">
+<h1>Notes</h1>
+<ol style="list-style-type: decimal">
+<li>We need equally spaced points along a line for each bearing from 0 to 360. In theory these distances should <em>not</em> change as a function of the lat-long origin point. The lat-long of each distance point <em>will</em> change, but the <em>distance</em> itself will not.</li>
+<li>EW has noted that the number of points per km (<code>pts_per_km</code>) sets the resolution. This value represents the number of points along the bearing for which we will calculate a lat-long. In the current example, this value is set at 100 points per km. Jason has made this more efficient.</li>
+<li>JJ is unsure of how to implement EW’s method for determining when points are on “land”. JJ’s implementation (below) does not really accomplish this task. JJ is also not 100% convinced we need to make this determination. If the point is simply to determine the distance to a bird, perhaps the issue of land is irrelevant.</li>
+</ol>
+<pre><code>## 
+## &gt; cat(&quot;\f&quot;)
+## 
+## &gt; library(ggplot2)
+## 
+## &gt; library(stringr)
+## 
+## &gt; library(dplyr)</code></pre>
+<pre><code>## 
+## Attaching package: 'dplyr'</code></pre>
+<pre><code>## The following objects are masked from 'package:stats':
+## 
+##     filter, lag</code></pre>
+<pre><code>## The following objects are masked from 'package:base':
+## 
+##     intersect, setdiff, setequal, union</code></pre>
+<pre><code>## 
+## &gt; library(PBSmapping)</code></pre>
+<pre><code>## 
+## -----------------------------------------------------------
+## PBS Mapping 2.70.4 -- Copyright (C) 2003-2018 Fisheries and Oceans Canada
+## 
+## PBS Mapping comes with ABSOLUTELY NO WARRANTY;
+## for details see the file COPYING.
+## This is free software, and you are welcome to redistribute
+## it under certain conditions, as outlined in the above file.
+## 
+## A complete user guide 'PBSmapping-UG.pdf' is located at 
+## C:/Users/Banksiola/Documents/R/win-library/3.5/PBSmapping/doc/PBSmapping-UG.pdf
+## 
+## Packaged on 2017-06-28
+## Pacific Biological Station, Nanaimo
+## 
+## All available PBS packages can be found at
+## https://github.com/pbs-software
+## 
+## To see demos, type '.PBSfigs()'.
+## -----------------------------------------------------------</code></pre>
+<pre><code>## 
+## &gt; library(sp)
+## 
+## &gt; library(knitr)
+## 
+## &gt; library(rmarkdown)
+## 
+## &gt; library(rgdal)</code></pre>
+<pre><code>## rgdal: version: 1.3-2, (SVN revision 755)
+##  Geospatial Data Abstraction Library extensions to R successfully loaded
+##  Loaded GDAL runtime: GDAL 2.2.3, released 2017/11/20
+##  Path to GDAL shared files: C:/Users/Banksiola/Documents/R/win-library/3.5/rgdal/gdal
+##  GDAL binary built with GEOS: TRUE 
+##  Loaded PROJ.4 runtime: Rel. 4.9.3, 15 August 2016, [PJ_VERSION: 493]
+##  Path to PROJ.4 shared files: C:/Users/Banksiola/Documents/R/win-library/3.5/rgdal/proj
+##  Linking to sp version: 1.3-1</code></pre>
+<pre><code>## 
+## &gt; library(tidyr)
+## 
+## &gt; library(measurements)
+## 
+## &gt; drive1 &lt;- &quot;C:/Users/Banksiola/Documents/R/&quot;
+## 
+## &gt; source(paste(drive1, &quot;functions.R&quot;, sep = &quot;&quot;))
+## 
+## &gt; source(paste(drive1, &quot;match.f.r&quot;, sep = &quot;&quot;))
+## 
+## &gt; Sys.sleep(2)
+## 
+## &gt; cat(&quot;\f&quot;)
+## </code></pre>
 </div>
 <div id="psss-data" class="section level1">
 <h1>PSSS Data</h1>
-<pre class="r"><code>birdat &lt;- read.csv(file = &quot;C:/Users/Banksiola/Documents/Seattle Audobon/Data/PSSS 2017-18 data_May 2018.csv&quot;,
-                   header = TRUE,
-                   stringsAsFactors = FALSE)</code></pre>
 <div id="munge-psss-data" class="section level2">
 <h2>Munge PSSS Data</h2>
 <div id="clean-up-bearing-field" class="section level3">
 <h3>Clean up bearing field</h3>
 <p>There are 3 forms of the bearing entries: 1. with leading zeros 2. with leading “R” or “L” 3. numeric, but as character.</p>
 <p>We need a single, numeric (0-360) as a numeric data type.</p>
-<pre class="r"><code>birdat$cln.bearing &lt;- as.numeric(gsub(&quot;(0*)([0-9]*)&quot;, &quot;\\2&quot;, gsub(&quot;(R*|L*)([0-9]*)&quot;, &quot;\\2&quot;, birdat$bearing)))</code></pre>
+<pre class="r"><code># -- Clean up bearing
+# waiting on Eric - JJ 18 May 2018
+# birdat$cln.bearing &lt;- as.numeric(gsub(&quot;(0*)([0-9]*)&quot;, &quot;\\2&quot;, gsub(&quot;(R*|L*)([0-9]*)&quot;, &quot;\\2&quot;, birdat$bearing)))
+
+# -- Create Year field for subsetting
+  birdat$Year = str_extract(birdat$survey_date, &quot;([0-9]{4})&quot;)</code></pre>
 </div>
-<div id="create-latitude-field" class="section level3">
-<h3>Create Latitude field</h3>
-<p>Latitude and longitude are recorded in a single data field <code>position</code> in this format <code>N48 8.644 W122 45.226</code> We need to create two numeric columns, a latitude and a longitude, as decimals (I think?).</p>
-<pre class="r"><code>birdat$lat_nodec &lt;- gsub(&quot;(^[0-9]*)( $)&quot;, &quot;\\1&quot;,
-                           gsub(&quot;(^[0-9]*)( [0-9]*\\.[0-9]*)&quot;, &quot;\\1&quot;,
-                                (gsub(&quot;(N)(*)&quot;, &quot;\\2&quot;,
-                                      gsub(&quot;(N[0-9]* [0-9]*\\.[0-9]*)( W[0-9]* [0-9]*\\.[0-9]*)&quot;, &quot;\\1&quot;,
-                                           birdat$position, fixed = F))),
-                                fixed = F))</code></pre>
+<div id="create-latitude-longitude-fields-in-the-bird-data" class="section level3">
+<h3>Create latitude &amp; longitude fields in the bird data</h3>
+<p>Latitude and longitude are recorded in a single data field <code>position</code> in this format <code>N48 8.644 W122 45.226</code> We need to create two numeric columns, a latitude and a longitude, as decimals.</p>
+<pre class="r"><code># -- Make lat-long fields decimals
+# lat
+  lat_deg = as.numeric(str_extract(gsub(&quot;(N)(*)&quot;, &quot;\\2&quot;, birdat$position), &quot;(^[0-9]{2})&quot; ))
+  lat_mindec =  as.numeric(str_extract(str_extract(birdat$position, &quot;(N)([0-9]){2} ([0-9]){2}\\.([0-9]){1,100}&quot;),&quot;([0-9]){2}\\.([0-9]){1,100}&quot;) )/60
+  birdat$lat_dec = lat_deg +lat_mindec
+# long
+  lon_deg = as.numeric(gsub(&quot;(N[0-9]+ [0-9]{1,3}\\.[0-9]{1,5} W)([0-9]{1,3}\\b)( [0-9]{1,3}\\.[0-9]{1,5})&quot;, &quot;\\2&quot;, birdat$position))
+  lon_mindec =  as.numeric(gsub(&quot;(N[0-9]+ [0-9]{1,3}\\.[0-9]{1,5} W[0-9]{1,3} )([0-9]{1,3}\\.[0-9]{1,5})&quot;, &quot;\\2&quot;, birdat$position))/60
+  birdat$lon_dec = -(lon_deg +lon_mindec)
+  lon_deg = birdat$lon_dec
+  
+  # -- Create lat-long input data
+ bearSites = as_tibble(birdat)%&gt;%
+            filter(!is.na(lon_dec),
+                   !is.na(lat_dec),
+                   bearing != &quot;&quot;)%&gt;%
+            mutate(bearing = as.numeric(bearing))%&gt;%
+            group_by(site_name, lon_dec, lat_dec)%&gt;%
+            dplyr::summarise(minB = min(bearing, na.rm = T),
+                             maxB = max(bearing, na.rm = T))%&gt;%
+            ungroup()%&gt;%
+            mutate(X  = lon_dec,
+                   Y = lat_dec)%&gt;%
+            distinct(site_name, lon_dec, X, lat_dec, Y, minB, maxB)%&gt;%
+            data.frame(., stringsAsFactors = FALSE)</code></pre>
+<pre><code>## Warning in evalq(as.numeric(bearing), &lt;environment&gt;): NAs introduced by
+## coercion</code></pre>
+<pre class="r"><code> # -- NOTE: All of  Puget Sound/Study area is within UTM Zone 10</code></pre>
 </div>
 </div>
+</div>
+<div id="example-sites-on-the-east-side-of-puget-sound" class="section level1">
+<h1>Example: sites on the east side of puget sound</h1>
+<div id="example-polygon-data" class="section level2">
+<h2>Example polygon data</h2>
+<p>The nepacLL high res map is used in this example. This could be swapped with a more high-resolution mapping data set, according to E. Ward. The following code identifies polygons in our region of interest, and retains only those polygons. All of Puget Sound study area is within UTM Zone 10.</p>
+<pre class="r"><code># -- The nepacLL map -- this could be swapped with something more high-res (EW)
+  data(nepacLLhigh)
+
+# -- Identify polygons in our region of interest, and only retain those
+# --  JJ note: I changed the polygons to match the birdat, hopefully reducing the search space
+  pid =  nepacLLhigh %&gt;%
+    mutate(ind = ifelse( (X &lt;= max(uni(lon_deg)) &amp;
+                           X &gt;= min(uni(lon_deg)) &amp;
+                           Y &gt;= min(uni(lat_deg)) &amp;
+                           Y &lt;= max(uni(lat_deg))), 1, 0))%&gt;%
+             group_by(PID) %&gt;%
+             summarize(tot = ifelse(sum(ind) &gt; 0, 1, 0)) %&gt;%
+             filter(tot == 1)%&gt;%
+             data.frame(., stringsAsFactors = F)
+
+  nepacLLhigh2 = as_tibble(nepacLLhigh)%&gt;%
+                 filter(PID %in% pid$PID,
+                        (X &lt;= max(uni(lon_deg)) &amp;
+                            X &gt;= min(uni(lon_deg)) &amp;
+                            Y &gt;= min(uni(lat_deg)) &amp;
+                            Y &lt;= max(uni(lat_deg))))%&gt;%
+                  data.frame(., stringsAsFactors = FALSE)
+
+# -- NOTE: All of  Puget Sound/Study area is within UTM Zone 10
+  attr(nepacLLhigh2, &quot;zone&quot;) = 10
+  attr(nepacLLhigh2, &quot;projection&quot;) = &quot;LL&quot;</code></pre>
+</div>
+</div>
+<div id="create-the-change-in-coordinates-delta-along-a-line-for-each-site-bearing" class="section level1">
+<h1>Create the change in coordinates (delta) along a “line” for each site &amp; bearing</h1>
+<p>The following code creates the change in each lat-long coordinate for each point along a line starting at a bearing from a site. The <code>max_dist_k</code> sets the maximum length of the line, in km. The <code>pts_per_km</code> variable sets how many points will be “plotted” along the line. Currently, <code>max_dist_k</code> is set to 12 km and <code>pts_per_km</code> is set to 100, as originally suggested by Eric. The result is, in this example, 1200 equally spaced points along a line. Now that we have a line with equally spaced points, we can calculate the <em>change</em> (run = x = latitude, rise = y = longitude) from one point to the next. Once we have changes along a line, we can give this line a starting point (site) and an angle (bearing) and then we can map the line to a location in space (in this example somewhere in east Puget Sound).</p>
+<pre class="r"><code>  # -- Set the resolution
+  # pts_per_km here really sets the resolution and I think we'd want that to be more like ~ 100-200?
+  max_dist_k = 12
+  pts_per_km = 100 
+  # these are equally spaced distances along the hypotenuse
+  # Below we will calculate lat-lon coords of each of these points
+  z = seq(0, max_dist_k, length.out = max_dist_k * pts_per_km)
+
+  bearAll   = seq(1, 360, by = 1)
+  # pythagorean theorem to draw a line
+  sinrad    = sin(bearAll)*pi/180
+  cosrad    = cos(bearAll)*pi/180
+
+  # -- Calculate the change from one point to the next
+  deltaLL = do.call(rbind,
+                  Map(function(i){data.frame(cbind(    z = z[i],
+                                                       delta_lon = z[i] * sinrad,
+                                                       delta_lat = z[i] * cosrad))}, 1:length(z)))
+  dim(deltaLL)</code></pre>
+<pre><code>## [1] 432000      3</code></pre>
+<pre class="r"><code>  deltaLL = deltaLL[complete.cases(deltaLL) , ]
+  dim(deltaLL)</code></pre>
+<pre><code>## [1] 432000      3</code></pre>
+<p>The <code>deltall</code> object has 100 points per kilometer, each point multiplied by each change in the <code>sin</code>/<code>cos-rad</code> object, resulting in a rather large object. However the <code>do.call</code> - <code>Map</code> functions appear to handle this just fine. The next step is to convert those changes into actual lat-long coordinates associated with a bearing and a PSSS site. For this example, we subset the PSSS data to the first five sites in the dataset.</p>
+<pre class="r"><code>  # - Use a subset of the data for example
+  pt_df &lt;- bearSites[1:5, ]
+
+  xycoords = do.call(rbind,
+                     Map(function(i){
+                               cbind(site_name = pt_df$site_name[i], bearing = bearAll,
+                               data.frame(X = pt_df$X[i] + deltaLL$delta_lon),
+                               data.frame(Y = pt_df$Y[i] + deltaLL$delta_lat), stringsAsFactors = FALSE)
+                       },
+                       1:nrow(pt_df)))</code></pre>
+<p>Now we need to determine the polygon where the site resides.<br />
+### JJ Needs to work on this section</p>
+<pre class="r"><code>  inpoly = rep(0, nrow(xycoords)) # vector, 0 or 1 if in polygo
+  # this loop is slow - can be sped up in dplyr/plyr
+  for(i in 1:length(xycoords)) { # loop over coordinates
+    # group by polygon id, for each summarize whether this coord is in a polygon nepacLLhigh2
+    g = group_by(nepacLLhigh2, PID) %&gt;%
+      dplyr::summarise(inpoly = point.in.polygon(point.x = xycoords$X[i],
+                                          point.y = xycoords$Y[i],
+                                          pol.x = X, pol.y = Y))
+    # record total -- should just be 0 or 1
+    inpoly[i] = sum(g$inpoly)
+  }</code></pre>
+<p>Now, let’s map some example lines, using multiple sites and multiple bearings at each site as examples.</p>
+<pre class="r"><code>  # -- Subset for mapping example
+  d = as_tibble(xycoords)%&gt;%
+            filter(site_name %in% unique(site_name)[1:5],
+                   bearing %in% c(45, 120, 270))%&gt;%
+            data.frame(., stringsAsFactors = FALSE)
+
+  attr(d, &quot;zone&quot;) = 10
+  attr(d, &quot;projection&quot;) = &quot;LL&quot;
+  
+  # Map examples from different sites and different bearings
+  pdf(&quot;test_map.pdf&quot;, onefile = TRUE)
+  for(i in 1:length(unique(d$site_name))){
+
+    din = as_tibble(d)%&gt;%
+      filter(site_name == unique(.$site_name)[i])%&gt;%
+      data.frame(., stringsAsFactors = FALSE)
+
+    minLon = min(din$X) + 0.4
+    maxLon = max(din$X) - 0.4
+    minLat = min(din$Y) - 0.1
+    maxLat = max(din$Y) + 0.1
+    pltitle = paste0(uni(din$site_name), &quot; bearing: &quot;, uni(din$bearing))
+
+    g = ggplot(din, aes(x = X, y = Y)) +
+      geom_polygon(data = nepacLLhigh2, aes(x = X, y = Y, group = PID), fill = 8, color = &quot;black&quot;) +
+      geom_point()+
+      labs(x = &quot;Longitude&quot;, y = &quot;Latitude&quot;, title = pltitle) +
+      theme_bw() +
+      #coord_map() +
+      coord_map(xlim = c(minLon, maxLon), ylim = c(minLat, maxLat)) +
+      theme(panel.border     = element_blank(),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+            axis.line        = element_line(colour = &quot;black&quot;))
+
+    print(g)}
+
+  dev.off()</code></pre>
+<pre><code>## png 
+##   2</code></pre>
 </div>
 
 
