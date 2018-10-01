@@ -92,98 +92,126 @@ rm(list = ls())
 #   nepacLLutm = convUL(nepacLLhigh2)
 # --------------------------------------
 
-# &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
-# Create X,Y coordinates for points along a "line" for each site & bearing
+  ##############################
+  # function to find nearest distance to land
+  ##############################
+  calc_distance = function(polygons, dat, pts_per_km = 360, max_dist_k = 1) {
 
-  # -- Set the resolution
-  # pts_per_km here really sets the resolution and I think we'd want that to be more like ~ 100-200?
-  max_dist_k = 12
-  pts_per_km = 100
-  # these are equally spaced distances along the hypotenuse
-  # Below we will calculate lat-lon coords of each
-  z = seq(0, max_dist_k, length.out = max_dist_k * pts_per_km)
+    outFinal = ldply(1:length(unique(dat$site_name)), function(i){
+      # -- Subset to site
+      d = as_tibble(dat)%>%
+        filter(site_name %in% unique(site_name)[i])%>%
+        #filter(site_name %in% unique(site_name)[1])%>%
+        data.frame(., stringsAsFactors = FALSE)
 
-  bearAll   = seq(1, 360, by = 1)
-  # pythagorean theorem to draw a line
-  sinrad    = sin(bearAll)*pi/180
-  cosrad    = cos(bearAll)*pi/180
+      # -- Get distance to land for every bearing
+      outB <- ldply(d$minB:d$maxB, function(j){
+        bearing = j
+        #bearing = 60
+        # pythagorean theorem to draw a line
+        rad = bearing * pi / 180
+        #delta_lat = max_dist * cos(rad)
+        #delta_lon = max_dist * sin(rad)
 
-  # -- Calculate the change from one point to the next
-  deltaLL = do.call(rbind,
-                    Map(function(i){data.frame(cbind(    z = z[i],
-                                                         delta_lon = z[i] * sinrad,
-                                                         delta_lat = z[i] * cosrad))}, 1:length(z)))
-  dim(deltaLL)
-  deltaLL = deltaLL[complete.cases(deltaLL) , ]
-  dim(deltaLL)
+        # these are equally spaced distances along the hypotenuse --
+        # need to calculate lat-lon coords of each
+        z = seq(0, max_dist_k, length.out = max_dist_k * pts_per_km)
+        delta_lat = z * cos(rad)
+        delta_lon = z * sin(rad)
 
-  # -- Create a data frame of X, Y, and site_name
+        x_coords = d$X + delta_lon
+        y_coords = d$Y + delta_lat
+        inpoly = rep(0, length(x_coords)) # vector, 0 or 1 if in polygon
 
-  # - Use a subset of the data for example
-  pt_df <- bearSites[1:5, ]
+        # this loop is slow - can be sped up in dplyr/plyr
+        for(i in 1:length(x_coords)) { # loop over coordinates
+          # group by polygon id, for each summarize whether this coord is in a polygon
+          g = group_by(nepacLLhigh2, PID) %>%
+            #g = group_by(polygons, PID) %>%
+            summarize(inpoly = point.in.polygon(point.x=x_coords[i], point.y=y_coords[i], pol.x=X, pol.y=Y))
+          # record total -- should just be 0 or 1
+          inpoly[i] = sum(g$inpoly)
+        }
 
-  xycoords = do.call(rbind,
-                     Map(function(i){
-                               cbind(site_name = pt_df$site_name[i], bearing = bearAll,
-                               data.frame(X = pt_df$X[i] + deltaLL$delta_lon),
-                               data.frame(Y = pt_df$Y[i] + deltaLL$delta_lat), stringsAsFactors = FALSE)
-                       },
-                       1:nrow(pt_df)))
+        # these arguments - 0.02, 0.7 are somewhat arbitrary and meant to catch cases looking at land
+        #if(mean(inpoly[1:round(0.02*length(inpoly))]) > 0.7) {
+        # this is probably a piece of land
+        #  dist_to_land = NA
+        #  X = NA
+        #  Y = NA
+        #} else {
+        # # find first location that is on the polygon
+        dtl1 = which(diff(inpoly) ==  1) + 1
+        # # dtl2 = ifelse(which(diff(inpoly) == -1) - 1 == 0, 1, which(diff(inpoly) == -1) - 1)
+        # dist_to_land = z[dtl1]#ifelse(length(dtl1)>0, z[dtl1], z[dtl2])
+        X = x_coords[dtl1]#ifelse(length(dtl1)>0, x_coords[dtl1], x_coords[dtl2])
+        Y = y_coords[dtl1]#ifelse(length(dtl1)>0, y_coords[dtl1], y_coords[dtl2])
+        # #  }
+        #
 
-  inpoly = rep(0, nrow(xycoords)) # vector, 0 or 1 if in polygo
-  # this loop is slow - can be sped up in dplyr/plyr
-  for(i in 1:length(xycoords)) { # loop over coordinates
-    # group by polygon id, for each summarize whether this coord is in a polygon nepacLLhigh2
-    g = group_by(nepacLLhigh2, PID) %>%
-      dplyr::summarise(inpoly = point.in.polygon(point.x = xycoords$X[i],
-                                          point.y = xycoords$Y[i],
-                                          pol.x = X, pol.y = Y))
-    # record total -- should just be 0 or 1
-    inpoly[i] = sum(g$inpoly)
+        # these arguments - 0.02, 0.7 are somewhat arbitrary and meant to catch cases looking at land
+        if(mean(inpoly[1:round(0.02*length(inpoly))]) > 0.7) {
+          # this is probably a piece of land
+          dist_to_land = NA
+        } else {
+          # find first location that is on the polygon
+          dist_to_land = z[which(diff(inpoly)==1) + 1]
+        }
+
+
+        out1 = cbind(X, Y, bearing , dist_to_land)
+        return(out1)
+      })
+
+      cbind(site_name = d$site_name,
+            site_lat_dec   = d$lat_dec,
+            site_lon_dec   = d$lon_dec,
+            outB)
+    })
+
+    return(outFinal)
   }
 
-  # -- Subset for mapping example
-  d = as_tibble(xycoords)%>%
-            filter(site_name %in% unique(site_name)[1:5],
-                   bearing == 270)%>%
-            data.frame(., stringsAsFactors = FALSE)
 
-  attr(d, "zone") = 10
-  attr(d, "projection") = "LL"
-  #d2 = convUL(d)
+  tst = calc_distance(polygons = nepacLLhigh2, dat = bearSites[1:2, ], pts_per_km = 360, max_dist_k = 1)
 
   # &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
-  # Mapping Example
+  # Mapping the max points?
+
+  din = as_tibble(tst)%>%
+    filter(dist_to_land>0, !is.na(dist_to_land))%>%
+    data.frame(., stringsAsFactors = FALSE)
 
   pdf("test_map.pdf", onefile = TRUE)
-  for(i in 1:length(unique(d$site_name))){
+  for(i in 1:length(unique(din$site_name))){
 
-    din = as_tibble(d)%>%
+    din2 = as_tibble(din)%>%
       filter(site_name == unique(.$site_name)[i])%>%
       data.frame(., stringsAsFactors = FALSE)
 
-    minLon = min(din$X) + 0.1
-    maxLon = max(din$X) - 0.1
-    minLat = min(din$Y) - 0.1
-    maxLat = max(din$Y) + 0.1
-    pltitle = paste0(uni(din$site_name), " bearing: ", uni(din$bearing))
+    minLon = min(din2$X) + 0.1
+    maxLon = max(din2$X) - 0.1
+    minLat = min(din2$Y) - 0.1
+    maxLat = max(din2$Y) + 0.1
+    pltitle = paste0(uni(din2$site_name), " bearing: ", uni(din2$bearing))
 
-    g = ggplot(din, aes(x = X, y = Y)) +
+    g = ggplot(data = din2) +
       geom_polygon(data = nepacLLhigh2, aes(x = X, y = Y, group = PID), fill = 8, color = "black") +
-      geom_point()+
+      geom_point(data = din2, aes(x = X, y = Y))+
+      geom_point(aes(x = uni(site_lon_dec), y = uni(site_lat_dec)), color = "blue", shape = 2) +
       labs(x = "Longitude", y = "Latitude", title = pltitle) +
       theme_bw() +
       #coord_map() +
-      coord_map(xlim = c(minLon, maxLon), ylim = c(minLat, maxLat)) +
+      coord_fixed(xlim = c(minLon, maxLon), ylim = c(minLat, maxLat)) +
       theme(panel.border     = element_blank(),
             panel.grid.major = element_blank(),
             panel.grid.minor = element_blank(),
             axis.line        = element_line(colour = "black"))
 
 
-    print(g)}
+    print(g)
+
+  }
 
   dev.off()
-
-
 
