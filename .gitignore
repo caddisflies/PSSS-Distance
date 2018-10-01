@@ -36,3 +36,11 @@ vignettes/*.pdf
 *.Rproj
 
 JJscratchpad\.R
+
+JJscratch2\.R
+
+OtherMaps\.R
+
+*.pdf
+
+tst\.png
